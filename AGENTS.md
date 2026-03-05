@@ -8,7 +8,7 @@
 
 ```bash
 # Environment
-uv sync --extra cuda            # dependencies (or `uv sync` without CUDA)
+uv sync --extra cuda-train --extra sglang  # dependencies (or --extra vllm instead of sglang)
 source .venv/bin/activate        # activate venv BEFORE pre-commit or git commit if venv exists
 pre-commit install               # formatting hooks (Ruff, mdformat, clang-format, nbstripout, autoflake)
 pre-commit run --all-files       # lint + format everything

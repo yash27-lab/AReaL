@@ -32,7 +32,13 @@ def _dummy_reward_fn(*args, **kwargs):
     return 1.0
 
 
-@pytest.fixture(params=["vllm", "sglang"], scope="module")
+@pytest.fixture(
+    params=[
+        pytest.param("vllm", marks=pytest.mark.vllm),
+        pytest.param("sglang", marks=pytest.mark.sglang),
+    ],
+    scope="module",
+)
 def inference_engine(request):
     """Fixture for remote inference engines only (vLLM and SGLang)."""
     backend = request.param

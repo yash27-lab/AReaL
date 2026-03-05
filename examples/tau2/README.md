@@ -81,8 +81,8 @@ NOTE: Following commands should be executed from root directory of this reposito
 
 #### Single Node (1.7B Model)
 
-On a single 8x GPU node with our offical image
-(ghcr.io/inclusionai/areal-runtime:latest), run:
+On a single 8x GPU node with our official image
+(ghcr.io/inclusionai/areal-runtime-sglang:dev), run:
 
 ```bash
 python3 examples/tau2/train.py \

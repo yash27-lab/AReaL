@@ -62,7 +62,8 @@ class BaseInstallationValidator:
         "torch",
         "transformers",
         "flash-attn",
-        "sglang",
+        # sglang/vllm are NOT listed here — they are mutually exclusive
+        # and should be validated dynamically by subclasses
         "megatron-core",
         "mbridge",
         "ray",

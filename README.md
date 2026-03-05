@@ -99,7 +99,7 @@ First, install the package:
 git clone https://github.com/inclusionAI/AReaL
 cd AReaL
 pip install uv
-uv sync --extra cuda
+uv sync --extra cuda-train --extra sglang
 ```
 
 Our training scripts automatically download the required dataset (openai/gsm8k) and
@@ -265,8 +265,8 @@ cd AReaL
 
 # Install uv and sync dependencies
 pip install uv
-# Use `--extra cuda` on Linux with CUDA for full functionality
-uv sync --extra cuda --group dev
+# Use `--extra cuda-train --extra sglang` on Linux with CUDA for full functionality
+uv sync --extra cuda-train --extra sglang --group dev
 # Or without CUDA support
 # uv sync --group dev
 

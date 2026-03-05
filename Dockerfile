@@ -1,12 +1,34 @@
-FROM lmsysorg/sglang:v0.5.7-cu129-amd64-runtime
+# Unified Dockerfile for AReaL Docker images.
+# Supports sglang and vllm variants via build arguments.
+#
+# Usage:
+#   # SGLang variant (default):
+#   docker build -t areal-runtime-sglang .
+#
+#   # vLLM variant:
+#   docker build \
+#     --build-arg BASE_IMAGE=vllm/vllm-openai:v0.14.0 \
+#     --build-arg VARIANT=vllm \
+#     -t areal-runtime-vllm .
+
+ARG BASE_IMAGE=lmsysorg/sglang:v0.5.7-cu129-amd64-runtime
+FROM ${BASE_IMAGE}
+
+# Re-declare after FROM (ARGs before FROM are scoped to FROM only)
+ARG VARIANT=sglang
 
 WORKDIR /
 
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install system dependencies
+# Note: cuda-toolkit-12-9 provides ALL CUDA development headers and libraries
+# needed for compiling C++ extensions (grouped_gemm, apex, transformer engine, etc.).
+# The sglang base image already includes these, but vllm-openai does not.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
+    curl \
+    git \
     net-tools \
     unzip \
     kmod \
@@ -27,6 +49,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rsync \
     dnsutils \
     vim \
+    cuda-toolkit-12-9 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -54,6 +77,10 @@ ENV MAX_JOBS=32
 # Set VIRTUAL_ENV so uv pip install targets the venv created below
 ENV VIRTUAL_ENV=/AReaL/.venv
 
+# Add CUDA stubs to library path for linking (e.g., DeepEP needs -lcuda).
+# In Docker builds without GPU, libcuda.so is only available as a stub.
+ENV LIBRARY_PATH=/usr/local/cuda/lib64/stubs:${LIBRARY_PATH}
+
 ##############################################################
 # STAGE 1: Install base torch FIRST
 # Torch rarely changes and is needed for C++ compilation
@@ -66,6 +93,16 @@ RUN uv venv $VIRTUAL_ENV \
     "torch==2.9.1+cu129" "torchaudio" "torchvision"
 
 RUN uv pip install "setuptools>=77.0.3,<80" pybind11 nvidia-mathdx
+
+# Symlink NVIDIA headers from pip packages to CUDA include path so C++ extensions
+# can find cudnn.h, nccl.h, etc. Torch installs nvidia-cudnn-cu12, nvidia-nccl-cu12,
+# etc. under the venv, but compilers look in /usr/local/cuda/include.
+# The sglang base image has these system-wide; vllm-openai does not.
+RUN for pkg_dir in $VIRTUAL_ENV/lib/python3.12/site-packages/nvidia/*/include; do \
+      if [ -d "$pkg_dir" ]; then \
+        ln -sf "$pkg_dir"/*.h /usr/local/cuda/include/ 2>/dev/null || true; \
+      fi; \
+    done
 
 ##############################################################
 # STAGE 2: Install heavy C++ dependencies BEFORE uv sync
@@ -157,10 +194,10 @@ RUN curl -fsSL https://fnm.vercel.app/install | bash -s -- --install-dir "$FNM_D
 
 # Install the project's dependencies (not the project itself)
 # This adds packages without removing unlisted ones (like our C++ packages)
-# Use --extra cuda to install all CUDA-dependent packages (sglang, vllm, megatron, tms)
+# VARIANT selects the inference backend (sglang or vllm)
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    uv pip install -r pyproject.toml --extra cuda --group dev
+    uv pip install -r pyproject.toml --extra ${VARIANT} --extra cuda-train --group dev
 
 ##############################################################
 # STAGE 4: Misc fixes and final setup
@@ -172,7 +209,7 @@ RUN uv pip uninstall pynvml
 # Install nvidia-ml-py to replace pynvml
 RUN uv pip install -U setuptools nvidia-ml-py
 
-# Remove libcudnn9 to avoid conflicts with torch
+# Remove libcudnn9 to avoid conflicts with torch (no-op if not present in base image)
 RUN apt-get --purge remove -y --allow-change-held-packages libcudnn9* \
     && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
@@ -191,3 +228,7 @@ RUN uv pip install --no-deps -e /AReaL
 
 # Place executables in the environment at the front of the path
 ENV PATH="/AReaL/.venv/bin:$PATH"
+
+# Reset entrypoint (vllm base sets ENTRYPOINT ["vllm", "serve"]; harmless for sglang)
+ENTRYPOINT []
+CMD ["/bin/bash"]

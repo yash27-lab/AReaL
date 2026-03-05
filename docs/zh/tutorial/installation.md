@@ -24,7 +24,7 @@
 | Git LFS                  | 用于下载模型、数据集和 AReaL 代码。请参阅[安装指南](https://docs.github.com/en/repositories/working-with-files/managing-large-files/installing-git-large-file-storage) |
 | Docker                   |                                                                                 27.5.1                                                                                 |
 | NVIDIA Container Toolkit |                             请参阅[安装指南](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)                              |
-| AReaL 镜像               |                                                `ghcr.io/inclusionai/areal-runtime:v0.5.3`（包含运行时依赖和 Ray 组件）                                                 |
+| AReaL 镜像               |                      `ghcr.io/inclusionai/areal-runtime-sglang:dev` 或 `ghcr.io/inclusionai/areal-runtime-vllm:dev`（包含运行时依赖和 Ray 组件）                       |
 
 **注意**：本教程不涵盖 NVIDIA 驱动、CUDA 或共享存储挂载的安装，因为这些取决于您具体的节点配置和系统版本。请独立完成这些安装。
 
@@ -34,14 +34,17 @@
 
 ### 方式 1：Docker（推荐）
 
-我们推荐使用 Docker 和提供的镜像。Dockerfile 位于 AReaL 仓库的顶级目录。
+我们推荐使用 Docker 和提供的镜像。`Dockerfile` 位于 AReaL 仓库的顶层目录，通过构建参数支持 SGLang 和 vLLM 两种变体。
 
 ```bash
-docker pull ghcr.io/inclusionai/areal-runtime:v0.5.3
+# SGLang 后端：
+docker pull ghcr.io/inclusionai/areal-runtime-sglang:dev
+# vLLM 后端：
+# docker pull ghcr.io/inclusionai/areal-runtime-vllm:dev
 docker run -it --name areal-node1 \
    --privileged --gpus all --network host \
    --shm-size 700g -v /path/to/mount:/path/to/mount \
-   ghcr.io/inclusionai/areal-runtime:v0.5.3 \
+   ghcr.io/inclusionai/areal-runtime-sglang:dev \
    /bin/bash
 git clone https://github.com/inclusionAI/AReaL /path/to/mount/AReaL
 cd /path/to/mount/AReaL
@@ -74,42 +77,51 @@ default = true
 4. 使用 uv sync 安装依赖：
 
 ```bash
-# 在 Linux 上使用 CUDA 时添加 `--extra cuda` 以获得完整功能
-uv sync --extra cuda
+# 在 Linux 上使用 CUDA 时添加 `--extra cuda-train --extra sglang` 以获得完整功能
+uv sync --extra cuda-train --extra sglang
 # 或者不带 CUDA 支持
 # uv sync
 # 或者包含开发和测试的额外包
 # uv sync --group dev
 ```
 
-这将安装所有 CUDA 依赖的包，包括 SGLang、vLLM、Megatron、Flash Attention 等。这些包需要 Linux x86_64 和 CUDA
+这将安装所有 CUDA 训练包（Megatron、Flash Attention 等）以及 SGLang 推理后端。 这些包需要 Linux x86_64 和 CUDA
 12.x 及兼容的 NVIDIA 驱动。
 
 同样的命令也适用于 macOS 和不带 CUDA 支持的 Linux。CUDA 包会通过平台标记自动跳过。但是，需要 CUDA
 的训练和推理功能将不可用。此配置仅适用于开发、测试和非 GPU 工作流。
 
-您也可以单独安装各个 extra，而不是完整的 `cuda` 捆绑包：
+**注意**：SGLang 和 vLLM 是互斥的推理后端。选择其一：
+
+```bash
+# SGLang 后端（默认推荐）
+uv sync --extra cuda-train --extra sglang
+# vLLM 后端
+uv sync --extra cuda-train --extra vllm
+```
+
+**注意**：不支持 `--all-extras`，因为 SGLang 和 vLLM 被声明为冲突的 extras。请使用
+`--extra cuda-train --extra sglang`（或 `--extra vllm`）代替。
+
+您也可以单独安装各个 extra：
 
 - `sglang`：SGLang 推理引擎
-- `vllm`：vLLM 推理引擎
+- `vllm`：vLLM 推理引擎（与 sglang 互斥）
+- `cuda-train`：CUDA 训练包（tms + megatron + flash-attn）
 - `megatron`：Megatron 训练后端
 - `tms`：Torch Memory Saver
 - `flash-attn`：Flash Attention v2
-- `cuda`：上述所有（便捷 extra）
-
-**注意**：您可以单独安装这些 extra：
 
 ```bash
-# 如果不需要 SGLang 和 Megatron
+# 最小安装：仅 vLLM 和 flash-attn
 uv sync --extra vllm --extra flash-attn
-# 如果安装 flash-attn 时遇到连接问题
-uv sync --extra vllm --extra sglang --extra megatron --extra tms
 ```
 
 ### 额外的 CUDA 包（可选，手动安装）
 
 Docker 镜像包含 `pyproject.toml` 中没有的额外编译包。这些包需要 CUDA，必须从源码编译。如果使用自定义环境（非
-Docker）且需要这些包的优化（例如 FP8 训练、融合 Adam 内核），请在运行 `uv sync --extra cuda` 后手动安装：
+Docker）且需要这些包的优化（例如 FP8 训练、融合 Adam 内核），请在运行 `uv sync --extra cuda-train --extra sglang`
+后手动安装：
 
 | 包                | 用途                              | 安装命令                                                                                                                                                          |
 | ----------------- | --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -119,7 +131,7 @@ Docker）且需要这些包的优化（例如 FP8 训练、融合 Adam 内核）
 | flash-attn-3      | Flash Attention v3（Hopper）      | 从源码构建，请参阅 [Dockerfile](https://github.com/inclusionAI/AReaL/blob/main/Dockerfile)                                                                        |
 
 **重要**：这些包需要 `--no-build-isolation`，因为它们需要访问已安装的 PyTorch 进行 CUDA 编译。先通过
-`uv sync --extra cuda` 安装 PyTorch，然后再尝试安装这些包。
+`uv sync --extra cuda-train --extra sglang` 安装 PyTorch，然后再尝试安装这些包。
 
 ### DeepSeek-V3 优化包（可选）
 

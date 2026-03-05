@@ -24,7 +24,7 @@ The following hardware configuration has been extensively tested:
 | Git LFS                  | Required for downloading models, datasets, and AReaL code. See [installation guide](https://docs.github.com/en/repositories/working-with-files/managing-large-files/installing-git-large-file-storage) |
 | Docker                   |                                                                                                 27.5.1                                                                                                 |
 | NVIDIA Container Toolkit |                                         See [installation guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)                                          |
-| AReaL Image              |                                                     `ghcr.io/inclusionai/areal-runtime:v1.0.1` (includes runtime dependencies and Ray components)                                                      |
+| AReaL Image              |                           `ghcr.io/inclusionai/areal-runtime-sglang:dev` or `ghcr.io/inclusionai/areal-runtime-vllm:dev` (includes runtime dependencies and Ray components)                            |
 
 **Note**: This tutorial does not cover the installation of NVIDIA Drivers, CUDA, or
 shared storage mounting, as these depend on your specific node configuration and system
@@ -38,15 +38,19 @@ checkpoints and logs.
 
 ### Option 1: Docker (Recommended)
 
-We recommend using Docker with our provided image. The Dockerfile is available in the
-top-level directory of the AReaL repository.
+We recommend using Docker with our provided images. The `Dockerfile` is available in the
+top-level directory of the AReaL repository and supports both SGLang and vLLM variants
+via build arguments.
 
 ```bash
-docker pull ghcr.io/inclusionai/areal-runtime:v1.0.1
+# For SGLang backend:
+docker pull ghcr.io/inclusionai/areal-runtime-sglang:dev
+# For vLLM backend:
+# docker pull ghcr.io/inclusionai/areal-runtime-vllm:dev
 docker run -it --name areal-node1 \
    --privileged --gpus all --network host \
    --shm-size 700g -v /path/to/mount:/path/to/mount \
-   ghcr.io/inclusionai/areal-runtime:v1.0.1 \
+   ghcr.io/inclusionai/areal-runtime-sglang:dev \
    /bin/bash
 git clone https://github.com/inclusionAI/AReaL /path/to/mount/AReaL
 cd /path/to/mount/AReaL
@@ -79,8 +83,8 @@ If your network connection is stable, you can skip this step.
 4. Install dependencies using uv sync:
 
 ```bash
-# Use `--extra cuda` on Linux with CUDA for full functionality
-uv sync --extra cuda
+# Use `--extra cuda-train --extra sglang` on Linux with CUDA for full functionality
+uv sync --extra cuda-train --extra sglang
 # Or without CUDA support
 # uv sync
 # Or with additional packages for development and testing
@@ -97,31 +101,39 @@ Activation is required before running `pre-commit` or `git commit`. If you use
 `uv run <command>` instead, activation is not needed as `uv run` automatically uses the
 virtual environment.
 
-This installs all CUDA-dependent packages including SGLang, vLLM, Megatron, Flash
-Attention, etc. These packages require Linux x86_64 with CUDA 12.x and compatible NVIDIA
-drivers.
+This installs all CUDA training packages (Megatron, Flash Attention, etc.) plus the
+SGLang inference backend. These packages require Linux x86_64 with CUDA 12.x and
+compatible NVIDIA drivers.
 
 The same command also works on macOS and Linux without CUDA support. CUDA packages are
 automatically skipped via platform markers. However, training and inference features
 requiring CUDA will not be available. This configuration is suitable only for
 development, testing, and non-GPU workflows.
 
-You can also install individual extras instead of the full `cuda` bundle:
+**Note**: SGLang and vLLM are mutually exclusive inference backends. Choose one:
+
+```bash
+# SGLang backend (default recommendation)
+uv sync --extra cuda-train --extra sglang
+# vLLM backend
+uv sync --extra cuda-train --extra vllm
+```
+
+**Note**: `--all-extras` is not supported because SGLang and vLLM are declared as
+conflicting extras. Use `--extra cuda-train --extra sglang` (or `--extra vllm`) instead.
+
+You can also install individual extras:
 
 - `sglang`: SGLang inference engine
-- `vllm`: vLLM inference engine
+- `vllm`: vLLM inference engine (mutually exclusive with sglang)
+- `cuda-train`: CUDA training packages (tms + megatron + flash-attn)
 - `megatron`: Megatron training backend
 - `tms`: Torch Memory Saver
 - `flash-attn`: Flash Attention v2
-- `cuda`: All of the above (convenience extra)
-
-**Note**: You can install these extras individually:
 
 ```bash
-# If you do not need SGLang and Megatron
+# Minimal: just vLLM and flash-attn for inference + attention
 uv sync --extra vllm --extra flash-attn
-# If you encounter connection issues when installing flash-attn
-uv sync --extra vllm --extra sglang --extra megatron --extra tms
 ```
 
 ### Additional CUDA Packages (Optional, Manual Installation)
@@ -129,7 +141,8 @@ uv sync --extra vllm --extra sglang --extra megatron --extra tms
 The Docker image includes additional compiled packages that are NOT in `pyproject.toml`.
 These packages require CUDA and must be compiled from source. If you are using a custom
 environment (not Docker) and need optimizations from these packages (e.g., FP8 training,
-fused Adam kernel), install them manually after running `uv sync --extra cuda`:
+fused Adam kernel), install them manually after running
+`uv sync --extra cuda-train --extra sglang`:
 
 | Package           | Purpose                                  | Installation Command                                                                                                                                              |
 | ----------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -140,7 +153,7 @@ fused Adam kernel), install them manually after running `uv sync --extra cuda`:
 
 **Important**: These packages require `--no-build-isolation` because they need access to
 the already-installed PyTorch for CUDA compilation. Install PyTorch first via
-`uv sync --extra cuda` before attempting to install these packages.
+`uv sync --extra cuda-train --extra sglang` before attempting to install these packages.
 
 ### DeepSeek-V3 Optimization Packages (Optional)
 

@@ -11,6 +11,8 @@ from tests.utils import get_dataset_path, get_model_path
 
 from areal.api.cli_args import GRPOConfig, load_expr_config
 
+pytestmark = pytest.mark.sglang
+
 
 @pytest.mark.parametrize("backend", ["fsdp", "megatron", "archon"])
 def test_grpo(tmp_path: str, backend: str) -> None:

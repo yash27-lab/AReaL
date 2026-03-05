@@ -34,7 +34,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 # Clone and install AReaL
 git clone https://github.com/inclusionAI/AReaL.git
 cd AReaL
-uv sync --all-extras
+uv sync --extra cuda-train --extra sglang
 ```
 
 ### 2. Start the RL service

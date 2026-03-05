@@ -20,7 +20,7 @@ permissions:
 
 env:
   GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-  IMAGE_NAME: ghcr.io/inclusionai/areal-runtime
+  IMAGE_BASE: ghcr.io/inclusionai/areal-runtime
 
 jobs:
   start-builder:
@@ -113,9 +113,9 @@ jobs:
   build-and-push-release:
     needs:
       - start-builder
-    name: Build and push release Docker image
+    name: Build and push release Docker images
     runs-on: [self-hosted, areal-docker-builder]
-    timeout-minutes: 180
+    timeout-minutes: 300
     outputs:
       package_version: ${{ steps.get-version.outputs.version }}
       release_tag: ${{ steps.get-version.outputs.release_tag }}
@@ -150,21 +150,39 @@ jobs:
           username: inclusionai
           password: ${{ secrets.GHCR_TOKEN }}
 
-      - name: Build and push Docker image
+      - name: Build and push sglang image
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile
           push: true
           tags: |
-            ${{ env.IMAGE_NAME }}:${{ steps.get-version.outputs.release_tag }}
-            ${{ env.IMAGE_NAME }}:latest
-            ${{ env.IMAGE_NAME }}:dev
+            ${{ env.IMAGE_BASE }}-sglang:${{ steps.get-version.outputs.release_tag }}
+            ${{ env.IMAGE_BASE }}-sglang:latest
+            ${{ env.IMAGE_BASE }}-sglang:dev
+          build-args: |
+            BASE_IMAGE=lmsysorg/sglang:v0.5.7-cu129-amd64-runtime
+            VARIANT=sglang
+
+      - name: Build and push vllm image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_BASE }}-vllm:${{ steps.get-version.outputs.release_tag }}
+            ${{ env.IMAGE_BASE }}-vllm:latest
+            ${{ env.IMAGE_BASE }}-vllm:dev
+          build-args: |
+            BASE_IMAGE=vllm/vllm-openai:v0.14.0
+            VARIANT=vllm
 
       - name: Image details
         run: |
-          echo "Docker image built and pushed successfully!"
-          echo "Image: ${{ env.IMAGE_NAME }}"
+          echo "Docker images built and pushed successfully!"
+          echo "Image base: ${{ env.IMAGE_BASE }}"
+          echo "Variants: sglang, vllm"
           echo "Tags:"
           echo "  - ${{ steps.get-version.outputs.release_tag }}"
           echo "  - latest"

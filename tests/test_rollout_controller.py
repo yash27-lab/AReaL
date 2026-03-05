@@ -21,6 +21,8 @@ from areal.infra import RolloutController
 from areal.infra.scheduler.local import LocalScheduler
 from areal.utils.hf_utils import load_hf_tokenizer
 
+pytestmark = pytest.mark.sglang
+
 
 def create_test_config(**kwargs):
     """Create a test InferenceEngineConfig with proper scheduling_spec."""
